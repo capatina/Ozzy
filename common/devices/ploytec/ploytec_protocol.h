@@ -196,24 +196,28 @@ static const struct ploytec_subpacket ploytec_bulk_subpackets[] = {
 };
 
 /*
- * Interrupt output packet layout (1928 bytes total):
- *   5 groups with 2-byte MIDI gaps between them
- *   Group 0: frames  0-8  (9 frames, 432 bytes) at offset 0
- *   Group 1: frames  9-18 (10 frames) at offset 434
- *   Group 2: frames 19-28 (10 frames) at offset 916
- *   Group 3: frames 29-38 (10 frames) at offset 1398
- *   Group 4: frame  39    (1 frame)   at offset 1880
+ * Interrupt output packet layout (3856 bytes, 80 frames = 8 x 482-byte
+ * sub-packets, matching PLOYTEC_INT_OUT_PKT_SIZE and PLOYTEC_FRAMES_PER_PKT).
+ * Each sub-packet k is 9 frames, a 2-byte MIDI slot at 482k + 432, then
+ * 1 frame; frame 9 of one sub-packet runs on into frames 0-8 of the next.
+ * The old table stopped at 1928 bytes / 40 frames, so frames 40-79 were
+ * never encoded and the second half's MIDI slots stayed 0x00 (Xone:4D
+ * stalls after ~7 s; layout per A&H dmaEncode10_AH_Int964_C).
  */
 static const struct ploytec_subpacket ploytec_int_subpackets[] = {
 	{ .start_frame =  0, .frame_count =  9, .byte_offset = 0 },
 	{ .start_frame =  9, .frame_count = 10, .byte_offset = 434 },
 	{ .start_frame = 19, .frame_count = 10, .byte_offset = 916 },
 	{ .start_frame = 29, .frame_count = 10, .byte_offset = 1398 },
-	{ .start_frame = 39, .frame_count =  1, .byte_offset = 1880 },
+	{ .start_frame = 39, .frame_count = 10, .byte_offset = 1880 },
+	{ .start_frame = 49, .frame_count = 10, .byte_offset = 2362 },
+	{ .start_frame = 59, .frame_count = 10, .byte_offset = 2844 },
+	{ .start_frame = 69, .frame_count = 10, .byte_offset = 3326 },
+	{ .start_frame = 79, .frame_count =  1, .byte_offset = 3808 },
 };
 
 #define PLOYTEC_BULK_NUM_SUBPACKETS  4
-#define PLOYTEC_INT_NUM_SUBPACKETS   5
+#define PLOYTEC_INT_NUM_SUBPACKETS   9
 
 /* Bulk MIDI slots: 1 byte each, after each 10-frame group */
 static const struct ploytec_midi_slot ploytec_bulk_midi_slots[] = {
@@ -223,16 +227,20 @@ static const struct ploytec_midi_slot ploytec_bulk_midi_slots[] = {
 	{ .offset = 2016, .num_bytes = 1 },
 };
 
-/* Interrupt MIDI slots: 2 bytes each, between frame groups */
+/* Interrupt MIDI slots: 2 bytes at 482k + 432 in each of the 8 sub-packets */
 static const struct ploytec_midi_slot ploytec_int_midi_slots[] = {
 	{ .offset = 432,  .num_bytes = 2 },
 	{ .offset = 914,  .num_bytes = 2 },
 	{ .offset = 1396, .num_bytes = 2 },
 	{ .offset = 1878, .num_bytes = 2 },
+	{ .offset = 2360, .num_bytes = 2 },
+	{ .offset = 2842, .num_bytes = 2 },
+	{ .offset = 3324, .num_bytes = 2 },
+	{ .offset = 3806, .num_bytes = 2 },
 };
 
 #define PLOYTEC_BULK_NUM_MIDI_SLOTS  4
-#define PLOYTEC_INT_NUM_MIDI_SLOTS   4
+#define PLOYTEC_INT_NUM_MIDI_SLOTS   8
 
 
 /* ========================================================================

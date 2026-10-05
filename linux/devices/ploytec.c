@@ -12,6 +12,7 @@
  * Copyright (C) 2024 Marcel Bierling <marcel@hackerman.art>
  */
 
+#include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/usb.h>
 
@@ -182,6 +183,30 @@ static int ploytec_confirm_status(struct ozzy_chip *chip)
  * ======================================================================== */
 
 /*
+ * ploytec_restart_streams - Start the device's audio engine.
+ *
+ * The A&H Windows driver waits 500 ms after the status confirm, then clears
+ * ENDPOINT_HALT on both PCM endpoints before streaming. Without it the
+ * Xone:4D audio engine never starts: EP 6 IN returns nothing and EP 5 OUT
+ * stops accepting data after two packets (usbmon, fw 1.4.1).
+ */
+static int ploytec_restart_streams(struct ozzy_chip *chip)
+{
+	int ret;
+
+	msleep(500);
+	ret = usb_clear_halt(chip->dev, usb_rcvintpipe(chip->dev, chip->info->in_ep));
+	if (ret < 0) {
+		ploytec_err(&chip->dev->dev, "clear halt on PCM in failed (ret=%d)\n", ret);
+		return ret;
+	}
+	ret = usb_clear_halt(chip->dev, usb_sndintpipe(chip->dev, chip->info->out_ep));
+	if (ret < 0)
+		ploytec_err(&chip->dev->dev, "clear halt on PCM out failed (ret=%d)\n", ret);
+	return ret;
+}
+
+/*
  * ploytec_init - Perform the Ploytec vendor handshake after USB probe.
  * Allocates private data, reads firmware, sets sample rate, confirms status.
  */
@@ -232,6 +257,8 @@ static int ploytec_init(struct ozzy_chip *chip)
 	ret = ploytec_confirm_status(chip);
 	if (ret < 0)
 		goto err;
+
+	ploytec_restart_streams(chip);
 
 	ploytec_log(&chip->dev->dev, "--- handshake complete, device ready ---\n");
 

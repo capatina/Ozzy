@@ -245,6 +245,7 @@ static void ozzy_disconnect(struct usb_interface *intf)
 	if (intf != chip->intf)
 		return;
 
+	ozzy_pcm_drain(chip);
 	ozzy_pcm_abort(chip);
 	ozzy_midi_abort(chip);
 

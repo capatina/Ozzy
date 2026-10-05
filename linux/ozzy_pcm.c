@@ -708,6 +708,24 @@ error:
  * ======================================================================== */
 
 /*
+ * ozzy_pcm_drain - Stop resubmitting and let in-flight URBs complete.
+ * Killing a URB mid-packet wedges the Xone:4D's audio engine until the mixer
+ * is power-cycled, and the streams always run. So an unbind while the device
+ * stays connected (a userspace driver taking it over via usbfs) must let the
+ * queued packets finish first, as the live rate change does.
+ */
+void ozzy_pcm_drain(struct ozzy_chip *chip)
+{
+	struct pcm_runtime *rt = chip->pcm;
+
+	if (!rt || rt->panic)
+		return;
+
+	rt->stream_state = STREAM_STOPPING;
+	msleep(20);
+}
+
+/*
  * ozzy_pcm_abort - Emergency stop all PCM activity.
  * Sets panic flag and poisons all URBs to prevent resubmission.
  */

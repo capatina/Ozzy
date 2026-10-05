@@ -188,7 +188,8 @@ static int ploytec_confirm_status(struct ozzy_chip *chip)
  * The A&H Windows driver waits 500 ms after the status confirm, then clears
  * ENDPOINT_HALT on both PCM endpoints before streaming. Without it the
  * Xone:4D audio engine never starts: EP 6 IN returns nothing and EP 5 OUT
- * stops accepting data after two packets (usbmon, fw 1.4.1).
+ * stops accepting data after two packets (usbmon, fw 1.4.1). Also used to
+ * re-arm the endpoints after a live sample rate change.
  */
 static int ploytec_restart_streams(struct ozzy_chip *chip)
 {
@@ -565,6 +566,7 @@ const struct ozzy_device_ops ploytec_ops = {
 	.free                = ploytec_free,
 	.set_rate            = ploytec_set_rate,
 	.reset               = ploytec_reset,
+	.restart_streams     = ploytec_restart_streams,
 	.process_out_packet  = ploytec_process_out_packet,
 	.process_in_packet   = ploytec_process_in_packet,
 	.init_out_urb        = ploytec_init_out_urb,

@@ -9,6 +9,7 @@
  * Copyright (C) 2024 Marcel Bierling <marcel@hackerman.art>
  */
 
+#include <linux/delay.h>
 #include <linux/slab.h>
 #include <sound/pcm.h>
 
@@ -324,6 +325,74 @@ static int ozzy_pcm_close(struct snd_pcm_substream *alsa_sub)
 }
 
 /*
+ * ozzy_pcm_resubmit_urbs - Resubmit the stopped PCM URBs after a live rate
+ * change. Output URBs restart from the device's silence pattern.
+ * Call with stream_mutex held.
+ */
+static int ozzy_pcm_resubmit_urbs(struct pcm_runtime *rt)
+{
+	struct ozzy_chip *chip = rt->chip;
+	struct pcm_urb *urb;
+	int i, ret;
+
+	for (i = 0; i < 2 * OZZY_PCM_N_URBS; i++) {
+		urb = i < OZZY_PCM_N_URBS ? &rt->pcm_in_urbs[i]
+					  : &rt->pcm_out_urbs[i - OZZY_PCM_N_URBS];
+		if (i >= OZZY_PCM_N_URBS && chip->ops->init_out_urb)
+			chip->ops->init_out_urb(chip, urb->buffer);
+		usb_anchor_urb(&urb->instance, &urb->submitted);
+		ret = usb_submit_urb(&urb->instance, GFP_KERNEL);
+		if (ret < 0) {
+			usb_unanchor_urb(&urb->instance);
+			return ret;
+		}
+	}
+	return 0;
+}
+
+/*
+ * ozzy_pcm_change_rate_live - Change the sample rate without a USB reset:
+ * stop the PCM URBs, set the rate, re-arm the endpoints, resubmit.
+ * This is how the A&H Windows and macOS drivers do it.
+ * Call with stream_mutex held.
+ */
+static int ozzy_pcm_change_rate_live(struct pcm_runtime *rt)
+{
+	struct ozzy_chip *chip = rt->chip;
+	int ret;
+
+	ozzy_pcm_log(&chip->dev->dev, "Changing sample rate %u -> %u (no USB reset)\n",
+		     chip->info->rates[chip->current_rate],
+		     chip->info->rates[chip->requested_rate]);
+
+	/*
+	 * Completion handlers see STOPPING and return without resubmitting.
+	 * Let in-flight URBs finish (each takes < 2 ms) before killing: a URB
+	 * cancelled mid-packet makes the Xone:4D drop the next control
+	 * transfer, so the first SET_CUR timed out (-110) after 2 s.
+	 */
+	rt->stream_state = STREAM_STOPPING;
+	msleep(20);
+	ozzy_pcm_kill_urbs(rt);
+	/* A handler racing the kill fails its resubmit and flags panic; ignore */
+	rt->panic = false;
+
+	ret = chip->ops->set_rate(chip, chip->requested_rate);
+	if (ret == -ETIMEDOUT) {
+		ozzy_pcm_log(&chip->dev->dev, "SET_CUR timed out, retrying once\n");
+		ret = chip->ops->set_rate(chip, chip->requested_rate);
+	}
+	if (ret == 0)
+		ret = chip->ops->restart_streams(chip);
+	rt->stream_state = STREAM_DISABLED;
+	if (ret == 0)
+		ret = ozzy_pcm_resubmit_urbs(rt);
+	if (ret < 0)
+		ozzy_pcm_err(&chip->dev->dev, "Sample rate change failed (%d)\n", ret);
+	return ret;
+}
+
+/*
  * ozzy_pcm_set_rate - Handle sample rate changes, resetting device if needed.
  * Call with stream_mutex held.
  */
@@ -332,6 +401,9 @@ static int ozzy_pcm_set_rate(struct pcm_runtime *rt)
 	struct ozzy_chip *chip = rt->chip;
 
 	chip->requested_rate = rt->rate;
+
+	if (chip->requested_rate != chip->current_rate && chip->ops->restart_streams)
+		return ozzy_pcm_change_rate_live(rt);
 
 	if (chip->requested_rate != chip->current_rate) {
 		ozzy_pcm_err(&chip->dev->dev,

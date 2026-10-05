@@ -99,6 +99,15 @@ struct ozzy_device_ops {
 	int (*reset)(struct ozzy_chip *chip);
 
 	/*
+	 * restart_streams - Re-arm the PCM endpoints after a live rate change.
+	 * Optional. When set, a rate change stops the PCM URBs, calls set_rate,
+	 * calls this, and resubmits the URBs, with no USB reset (the Xone:4D
+	 * never comes back from usb_reset_device). When NULL, reset is used.
+	 * Returns 0 on success, negative errno on failure.
+	 */
+	int (*restart_streams)(struct ozzy_chip *chip);
+
+	/*
 	 * process_out_packet - Encode ALSA audio into a device output USB packet.
 	 * Zero-copy: reads directly from the ALSA DMA area, writes directly
 	 * into the URB buffer. Handles device-specific framing (padding, gaps).

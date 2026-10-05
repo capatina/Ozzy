@@ -199,6 +199,13 @@ wLength:       3
 Sends 3 bytes, little-endian sample rate. Sent 5 times alternating between endpoints
 0x0086 and 0x0005 (3x to 0x0086, 2x to 0x0005).
 
+Confirmed by usbmon of the A&H Windows driver v2.9.91 (Xone:4D, fw 1.4.1) at init:
+GET_CUR (wIndex 0) → SET_CUR 0x86, 0x05, 0x86, 0x05, 0x86 → GET_CUR (wIndex 0x86).
+Rate changes need no USB reset (the Xone:4D never comes back from `usb_reset_device`).
+If a PCM URB is cancelled mid-packet, the Xone:4D drops the next control transfer (the first
+SET_CUR times out after 2 s; an immediate resend succeeds). Letting in-flight URBs drain before
+stopping avoids it, and may be why the official driver sends redundant SET_CURs.
+
 ## Standard USB Requests
 
 ### SET_INTERFACE (0x0B)
@@ -213,3 +220,18 @@ wIndex:        interface number
 ```
 
 Standard USB SET_INTERFACE to select alternate setting.
+
+### CLEAR_FEATURE (0x01) — ENDPOINT_HALT on the PCM endpoints
+
+```
+bmRequestType: 0x02 (standard, endpoint)
+bRequest:      0x01 (CLEAR_FEATURE)
+wValue:        0x0000 (ENDPOINT_HALT)
+wIndex:        0x0086, then 0x0005
+```
+
+Sent by the A&H Windows driver v2.9.91 500 ms after the 'I' status confirm (0x40 0x49 wValue
+0xFFB2), right before it submits the first PCM transfers (usbmon, Xone:4D fw 1.4.1). Required:
+without it the Xone:4D audio engine never starts (EP6 IN never completes, EP5 OUT takes two
+964-byte packets and then NAKs forever). Ozzy sends it as `ploytec_restart_streams()` after the
+handshake and after every live rate change.

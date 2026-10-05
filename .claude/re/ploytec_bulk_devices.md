@@ -51,6 +51,9 @@ Examples from `onServiceStart`:
 For the DB4 specifically:
 - **Firmware 1.3.9**: USB descriptors expose bulk endpoints → `getBulkInPipe` succeeds
 - **Firmware 1.4.1+**: USB descriptors expose interrupt endpoints → falls back to interrupt
+- **Confirmed on Xone:4D** (lsusb, alt setting 1): fw 1.2.9 exposes EP5 OUT and EP6 IN as bulk
+  (512 bytes); after flashing 1.4.1 with A&H's `FWUpdater_XONE_4D_v1.4.1.exe` they are interrupt
+  (EP5 OUT 964 = 2 x 482, EP6 IN 1024, bInterval 1). EP3 IN (MIDI) stays bulk.
 
 The `this[0x1888]` flag is 1 in BOTH cases (device is still High Speed). The transfer
 type difference comes from the firmware's endpoint descriptors, not from this flag.

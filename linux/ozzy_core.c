@@ -134,8 +134,8 @@ static int ozzy_probe(struct usb_interface *intf,
 	chip->intf = intf;
 	chip->intf2 = NULL;
 
-	/* Default to highest rate */
-	chip->requested_rate = chip->info->num_rates - 1;
+	/* Default to 48 kHz */
+	chip->requested_rate = 1; /* ginkomarchy: start at 48 kHz (ploytec_rates[1]) to match PipeWire, so connecting needs no rate change */
 
 	strscpy(card->driver, DRIVER_NAME, sizeof(card->driver));
 	strscpy(card->shortname, device->product, sizeof(card->shortname));
